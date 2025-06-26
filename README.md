@@ -13,7 +13,7 @@ apt update && apt upgrade -y
 apt install git -y
 
 # Clone the repository
-git clone https://github.com/yourusername/TxPloit
+git clone https://github.com/h4xan-blackbirdcybersec/TxPloit
 
 # Enter the directory
 cd TxPloit

